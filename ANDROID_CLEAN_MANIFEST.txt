@@ -1,0 +1,26 @@
+Naruto Senki V2 Android Clean Base
+
+Retained:
+- cocos2dx common engine + platform/android + platform/third_party/android
+- CocosDenshion/include + CocosDenshion/android
+- extensions source + extensions/Android.mk
+- scripting/lua source + proj.android + luajit/android + luajit/include
+- external/sqlite3, fmt, toml as present in original
+- projects/NarutoSenki/Classes
+- projects/NarutoSenki/Resources
+- projects/NarutoSenki/lua
+- projects/NarutoSenki/proj.android-studio
+
+Removed:
+- Windows game projects and platform implementations
+- Linux game projects and platform implementations
+- macOS game projects and platform implementations
+- iOS game projects and platform implementations
+- desktop-only GLFW assets
+- desktop build/deploy scripts
+- VS Code project settings
+- desktop tolua++ build tooling
+- bundled release/debug keystores and their passwords
+
+Note:
+Windows/Linux/macOS references that occur only inside comments/documentation of retained common source are not platform implementations and were not blindly edited, to avoid breaking the Cocos2d-x engine.

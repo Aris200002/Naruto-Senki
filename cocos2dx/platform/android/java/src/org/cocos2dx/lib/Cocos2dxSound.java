@@ -1,346 +1,714 @@
 /****************************************************************************
 Copyright (c) 2010-2011 cocos2d-x.org
-
-http://www.cocos2d-x.org
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
- ****************************************************************************/
+****************************************************************************/
 package org.cocos2dx.lib;
 
 import android.content.Context;
 import android.media.AudioManager;
 import android.media.SoundPool;
 import android.util.Log;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.concurrent.Semaphore;
 
 public class Cocos2dxSound {
-	// ===========================================================
-	// Constants
-	// ===========================================================
-	public static final int MAX_SIMULTANEOUS_STREAMS_DEFAULT = 150;
-	public static final int MAX_SIMULTANEOUS_STREAMS_I9100 = 20;
 
-	private static final String TAG = "Cocos2dxSound";
+    public static final int MAX_SIMULTANEOUS_STREAMS_DEFAULT = 150;
+    public static final int MAX_SIMULTANEOUS_STREAMS_I9100 = 20;
 
-	// ===========================================================
-	// Fields
-	// ===========================================================
+    private static final String TAG = "Cocos2dxSound";
 
-	private final Context mContext;
-	private SoundPool mSoundPool;
-	private float mLeftVolume;
-	private float mRightVolume;
+    private static final float SOUND_RATE = 1.0f;
+    private static final int SOUND_PRIORITY = 1;
+    private static final int SOUND_QUALITY = 0;
 
-	// sound path and stream ids map
-	// a file may be played many times at the same time
-	// so there is an array map to a file path
-	private final HashMap<String, ArrayList<Integer>> mPathStreamIDsMap = new HashMap<String, ArrayList<Integer>>();
+    private static final int INVALID_SOUND_ID = -1;
+    private static final int INVALID_STREAM_ID = -1;
 
-	private final HashMap<String, Integer> mPathSoundIDMap = new HashMap<String, Integer>();
-	
-	private final ArrayList<SoundInfoForLoadedCompleted> mEffecToPlayWhenLoadedArray = new ArrayList<SoundInfoForLoadedCompleted>();
-	
-	private int mStreamIdSyn;
-	private Semaphore mSemaphore;
-	private int simultaneousStreams;
+    private final Context mContext;
 
-	private static final float SOUND_RATE = 1.0f;
-	private static final int SOUND_PRIORITY = 1;
-	private static final int SOUND_QUALITY = 0;
+    private SoundPool mSoundPool;
 
-	private final static int INVALID_SOUND_ID = -1;
-	private final static int INVALID_STREAM_ID = -1;
+    private float mLeftVolume;
+    private float mRightVolume;
 
-	// ===========================================================
-	// Constructors
-	// ===========================================================
+    private final Object mLock = new Object();
 
-	public Cocos2dxSound(final Context pContext, final int simultaneousStreams) {
-		this.mContext = pContext;
-		this.initData(simultaneousStreams);
-	}
+    private final HashMap<String, ArrayList<Integer>>
+            mPathStreamIDsMap = new HashMap<String, ArrayList<Integer>>();
 
-	private void initData(final int simultaneousStreams) {
-		this.mSoundPool = new SoundPool(simultaneousStreams, AudioManager.STREAM_MUSIC, Cocos2dxSound.SOUND_QUALITY);
-        this.mSoundPool.setOnLoadCompleteListener(new OnLoadCompletedListener());
-		
-		this.mLeftVolume = 0.5f;
-		this.simultaneousStreams = simultaneousStreams;
-		this.mRightVolume = 0.5f;
-		
-		this.mSemaphore = new Semaphore(0, true);
-	}
+    private final HashMap<String, Integer>
+            mPathSoundIDMap = new HashMap<String, Integer>();
 
-	// ===========================================================
-	// Getter & Setter
-	// ===========================================================
+    /*
+     * Status pemuatan setiap audio.
+     * false = masih dimuat
+     * true  = sudah siap diputar
+     */
+    private final HashMap<String, Boolean>
+            mPathLoadedMap = new HashMap<String, Boolean>();
 
-	// ===========================================================
-	// Methods for/from SuperClass/Interfaces
-	// ===========================================================
+    /*
+     * Antrean audio yang dipanggil sebelum proses loading selesai.
+     * Boolean menyimpan status loop.
+     */
+    private final HashMap<String, ArrayList<Boolean>>
+            mPendingSounds = new HashMap<String, ArrayList<Boolean>>();
 
-	// ===========================================================
-	// Methods
-	// ===========================================================
+    private int simultaneousStreams;
 
-	public int preloadEffect(final String pPath) {
-		Integer soundID = this.mPathSoundIDMap.get(pPath);
+    private boolean mReleased = false;
 
-		if (soundID == null) {
-			soundID = this.createSoundIDFromAsset(pPath);
-			// save value just in case if file is really loaded
-			if (soundID != Cocos2dxSound.INVALID_SOUND_ID) {
-				this.mPathSoundIDMap.put(pPath, soundID);
-			}
-		}
+    // ===========================================================
+    // Constructor
+    // ===========================================================
 
-		return soundID;
-	}
+    public Cocos2dxSound(
+            final Context pContext,
+            final int simultaneousStreams) {
 
-	public void unloadEffect(final String pPath) {
-		// stop effects
-		final ArrayList<Integer> streamIDs = this.mPathStreamIDsMap.get(pPath);
-		if (streamIDs != null) {
-			for (final Integer pStreamID : streamIDs) {
-				this.mSoundPool.stop(pStreamID);
-			}
-		}
-		this.mPathStreamIDsMap.remove(pPath);
+        this.mContext = pContext.getApplicationContext();
 
-		// unload effect
-		final Integer soundID = this.mPathSoundIDMap.get(pPath);
-		if(soundID != null){
-			this.mSoundPool.unload(soundID);
-			this.mPathSoundIDMap.remove(pPath);
-		}
-	}
+        this.simultaneousStreams = simultaneousStreams;
 
-	public int playEffect(final String pPath, final boolean pLoop) {
-		Integer soundID = this.mPathSoundIDMap.get(pPath);
-		int streamID = Cocos2dxSound.INVALID_STREAM_ID;
+        initData(simultaneousStreams);
+    }
 
-		if (soundID != null) {
-			// play sound
-			streamID = this.doPlayEffect(pPath, soundID.intValue(), pLoop);
-		} else {
-			// the effect is not prepared
-			soundID = this.preloadEffect(pPath);
-			if (soundID == Cocos2dxSound.INVALID_SOUND_ID) {
-				// can not preload effect
-				return Cocos2dxSound.INVALID_SOUND_ID;
-			}
-			
-			// only allow one playEffect at a time, or the semaphore will not work correctly
-			synchronized(this.mSoundPool) {
-				// add this effect into mEffecToPlayWhenLoadedArray, and it will be played when loaded completely
-				mEffecToPlayWhenLoadedArray.add(new SoundInfoForLoadedCompleted(pPath, soundID.intValue(), pLoop));
-				
-				try {
-					// wait OnloadedCompleteListener to set streamID
-					this.mSemaphore.acquire();
-					
-					streamID = this.mStreamIdSyn;
-				} catch(Exception e) {
-					return Cocos2dxSound.INVALID_SOUND_ID;
-				}
-			}
-		}
+    // ===========================================================
+    // Initialize SoundPool
+    // ===========================================================
 
-		return streamID;
-	}
+    private void initData(final int streams) {
 
-	public void stopEffect(final int pStreamID) {
-		this.mSoundPool.stop(pStreamID);
+        synchronized (mLock) {
 
-		// remove record
-		for (final String pPath : this.mPathStreamIDsMap.keySet()) {
-			if (this.mPathStreamIDsMap.get(pPath).contains(pStreamID)) {
-				this.mPathStreamIDsMap.get(pPath).remove((Integer) pStreamID);
-				break;
-			}
-		}
-	}
+            mSoundPool = new SoundPool(
+                    streams,
+                    AudioManager.STREAM_MUSIC,
+                    SOUND_QUALITY
+            );
 
-	public void pauseEffect(final int pStreamID) {
-		this.mSoundPool.pause(pStreamID);
-	}
+            final SoundPool currentPool = mSoundPool;
 
-	public void resumeEffect(final int pStreamID) {
-		this.mSoundPool.resume(pStreamID);
-	}
+            currentPool.setOnLoadCompleteListener(
+                    new OnLoadCompletedListener(currentPool)
+            );
 
-	public void pauseAllEffects() {
-		this.mSoundPool.autoPause();
-	}
+            mLeftVolume = 0.5f;
+            mRightVolume = 0.5f;
 
-	public void resumeAllEffects() {
-		// can not only invoke SoundPool.autoResume() here, because
-		// it only resumes all effects paused by pauseAllEffects()
-		if (!this.mPathStreamIDsMap.isEmpty()) {
-			final Iterator<Entry<String, ArrayList<Integer>>> iter = this.mPathStreamIDsMap.entrySet().iterator();
-			while (iter.hasNext()) {
-				final Entry<String, ArrayList<Integer>> entry = iter.next();
-				for (final int pStreamID : entry.getValue()) {
-					this.mSoundPool.resume(pStreamID);
-				}
-			}
-		}
-	}
+            simultaneousStreams = streams;
 
-	@SuppressWarnings("unchecked")
-	public void stopAllEffects() {
-		// stop effects
-		if (!this.mPathStreamIDsMap.isEmpty()) {
-			final Iterator<?> iter = this.mPathStreamIDsMap.entrySet().iterator();
-			while (iter.hasNext()) {
-				final Map.Entry<String, ArrayList<Integer>> entry = (Map.Entry<String, ArrayList<Integer>>) iter.next();
-				for (final int pStreamID : entry.getValue()) {
-					this.mSoundPool.stop(pStreamID);
-				}
-			}
-		}
+            mReleased = false;
+        }
+    }
 
-		// remove records
-		this.mPathStreamIDsMap.clear();
-	}
+    // ===========================================================
+    // Preload Effect
+    // ===========================================================
 
-	public float getEffectsVolume() {
-		return (this.mLeftVolume + this.mRightVolume) / 2;
-	}
+    public int preloadEffect(final String pPath) {
 
-	public void setEffectsVolume(float pVolume) {
-		// pVolume should be in [0, 1.0]
-		if (pVolume < 0) {
-			pVolume = 0;
-		}
-		if (pVolume > 1) {
-			pVolume = 1;
-		}
+        if (pPath == null || pPath.length() == 0) {
+            return INVALID_SOUND_ID;
+        }
 
-		this.mLeftVolume = this.mRightVolume = pVolume;
+        synchronized (mLock) {
 
-		// change the volume of playing sounds
-		if (!this.mPathStreamIDsMap.isEmpty()) {
-			final Iterator<Entry<String, ArrayList<Integer>>> iter = this.mPathStreamIDsMap.entrySet().iterator();
-			while (iter.hasNext()) {
-				final Entry<String, ArrayList<Integer>> entry = iter.next();
-				for (final int pStreamID : entry.getValue()) {
-					this.mSoundPool.setVolume(pStreamID, this.mLeftVolume, this.mRightVolume);
-				}
-			}
-		}
-	}
+            if (mReleased || mSoundPool == null) {
+                return INVALID_SOUND_ID;
+            }
 
-	public void end() {
-		this.mSoundPool.release();
-		this.mPathStreamIDsMap.clear();
-		this.mPathSoundIDMap.clear();
-		this.mEffecToPlayWhenLoadedArray.clear();
+            Integer soundID = mPathSoundIDMap.get(pPath);
 
-		this.mLeftVolume = 0.5f;
-		this.mRightVolume = 0.5f;
-		
-		this.initData(this.simultaneousStreams);
-	}
+            if (soundID != null) {
+                return soundID.intValue();
+            }
 
-	public int createSoundIDFromAsset(final String pPath) {
-		int soundID = Cocos2dxSound.INVALID_SOUND_ID;
+            int newSoundID = createSoundIDFromAssetInternal(pPath);
 
-		try {
-			if (pPath.startsWith("/")) {
-				soundID = this.mSoundPool.load(pPath, 0);
-			} else {
-				soundID = this.mSoundPool.load(this.mContext.getAssets().openFd(pPath), 0);
-			}
-		} catch (final Exception e) {
-			soundID = Cocos2dxSound.INVALID_SOUND_ID;
-			Log.e(Cocos2dxSound.TAG, "error: " + e.getMessage(), e);
-		}
+            if (newSoundID == INVALID_SOUND_ID) {
+                return INVALID_SOUND_ID;
+            }
 
-		// mSoundPool.load returns 0 if something goes wrong, for example a file does not exist
-		if (soundID == 0) {
-			soundID = Cocos2dxSound.INVALID_SOUND_ID;
-		}
+            mPathSoundIDMap.put(pPath, newSoundID);
 
-		return soundID;
-	}
-	
-	private int doPlayEffect(final String pPath, final int soundId, final boolean pLoop) {
-		// play sound
-		int streamID = this.mSoundPool.play(soundId, this.mLeftVolume, this.mRightVolume, Cocos2dxSound.SOUND_PRIORITY, pLoop ? -1 : 0, Cocos2dxSound.SOUND_RATE);
+            /*
+             * SoundPool.load() bekerja secara asynchronous.
+             * Status akan berubah menjadi true melalui callback.
+             */
+            mPathLoadedMap.put(pPath, Boolean.FALSE);
 
-		// record stream id
-		ArrayList<Integer> streamIDs = this.mPathStreamIDsMap.get(pPath);
-		if (streamIDs == null) {
-			streamIDs = new ArrayList<Integer>();
-			this.mPathStreamIDsMap.put(pPath, streamIDs);
-		}
-		streamIDs.add(streamID);
-		
-		return streamID;
-	}
+            return newSoundID;
+        }
+    }
 
-	// ===========================================================
-	// Inner and Anonymous Classes
-	// ===========================================================
-	
-	public class SoundInfoForLoadedCompleted {
-		public int soundID;
-	    public boolean isLoop;
-	    public String path;
-	    
-	    public SoundInfoForLoadedCompleted(String path, int soundId, boolean isLoop) {
-	    	this.path = path;
-	    	this.soundID = soundId;
-	    	this.isLoop = isLoop;
-	    }
-	}
-	
-	public class OnLoadCompletedListener implements SoundPool.OnLoadCompleteListener {
+    // ===========================================================
+    // Play Effect
+    // ===========================================================
 
-		@Override
-		public void onLoadComplete(SoundPool soundPool, int sampleId, int status) {
-			if (status == 0)
-			{
-				// only play effect that are in mEffecToPlayWhenLoadedArray
-				for ( SoundInfoForLoadedCompleted info : mEffecToPlayWhenLoadedArray) {
-					if (sampleId == info.soundID) {
-						// set the stream id which will be returned by playEffect()
-						mStreamIdSyn = doPlayEffect(info.path, info.soundID, info.isLoop);
-						
-						// remove it from array, because we will break here
-						// so it is safe to do
-						mEffecToPlayWhenLoadedArray.remove(info);
+    public int playEffect(
+            final String pPath,
+            final boolean pLoop) {
 
-						break;
-					}
-				}
-			} else {
-				mStreamIdSyn = Cocos2dxSound.INVALID_SOUND_ID;
-			}
-			
-			mSemaphore.release();
-		}
-	}
+        if (pPath == null || pPath.length() == 0) {
+            return INVALID_STREAM_ID;
+        }
+
+        synchronized (mLock) {
+
+            if (mReleased || mSoundPool == null) {
+                return INVALID_STREAM_ID;
+            }
+
+            Integer soundID = mPathSoundIDMap.get(pPath);
+
+            /*
+             * Audio belum pernah dimuat.
+             */
+            if (soundID == null) {
+
+                int newSoundID = createSoundIDFromAssetInternal(pPath);
+
+                if (newSoundID == INVALID_SOUND_ID) {
+                    return INVALID_STREAM_ID;
+                }
+
+                soundID = Integer.valueOf(newSoundID);
+
+                mPathSoundIDMap.put(pPath, soundID);
+
+                mPathLoadedMap.put(pPath, Boolean.FALSE);
+            }
+
+            Boolean loaded = mPathLoadedMap.get(pPath);
+
+            /*
+             * Audio sudah selesai dimuat.
+             */
+            if (Boolean.TRUE.equals(loaded)) {
+
+                return doPlayEffect(
+                        pPath,
+                        soundID.intValue(),
+                        pLoop
+                );
+            }
+
+            /*
+             * Audio belum selesai dimuat.
+             * Simpan permintaan pemutaran untuk callback.
+             */
+            ArrayList<Boolean> pending = mPendingSounds.get(pPath);
+
+            if (pending == null) {
+
+                pending = new ArrayList<Boolean>();
+
+                mPendingSounds.put(pPath, pending);
+            }
+
+            pending.add(Boolean.valueOf(pLoop));
+
+            /*
+             * Pemutaran akan dilakukan otomatis
+             * ketika OnLoadCompletedListener dipanggil.
+             */
+            return INVALID_STREAM_ID;
+        }
+    }
+
+    // ===========================================================
+    // Actual Sound Playback
+    // ===========================================================
+
+    private int doPlayEffect(
+            final String pPath,
+            final int soundId,
+            final boolean pLoop) {
+
+        if (mReleased || mSoundPool == null) {
+            return INVALID_STREAM_ID;
+        }
+
+        int streamID = mSoundPool.play(
+                soundId,
+                mLeftVolume,
+                mRightVolume,
+                SOUND_PRIORITY,
+                pLoop ? -1 : 0,
+                SOUND_RATE
+        );
+
+        if (streamID == INVALID_STREAM_ID) {
+            return INVALID_STREAM_ID;
+        }
+
+        ArrayList<Integer> streamIDs =
+                mPathStreamIDsMap.get(pPath);
+
+        if (streamIDs == null) {
+
+            streamIDs = new ArrayList<Integer>();
+
+            mPathStreamIDsMap.put(pPath, streamIDs);
+        }
+
+        streamIDs.add(Integer.valueOf(streamID));
+
+        return streamID;
+    }
+
+    // ===========================================================
+    // Load Completed Listener
+    // ===========================================================
+
+    private class OnLoadCompletedListener
+            implements SoundPool.OnLoadCompleteListener {
+
+        private final SoundPool mOwnerPool;
+
+        OnLoadCompletedListener(SoundPool pool) {
+            mOwnerPool = pool;
+        }
+
+        @Override
+        public void onLoadComplete(
+                SoundPool soundPool,
+                int sampleId,
+                int status) {
+
+            synchronized (mLock) {
+
+                /*
+                 * Abaikan callback dari SoundPool lama.
+                 */
+                if (mReleased ||
+                        mSoundPool == null ||
+                        soundPool != mSoundPool ||
+                        soundPool != mOwnerPool) {
+
+                    return;
+                }
+
+                String loadedPath = null;
+
+                /*
+                 * Cari path berdasarkan sample ID.
+                 */
+                for (Entry<String, Integer> entry :
+                        mPathSoundIDMap.entrySet()) {
+
+                    if (entry.getValue().intValue() == sampleId) {
+
+                        loadedPath = entry.getKey();
+
+                        break;
+                    }
+                }
+
+                if (loadedPath == null) {
+                    return;
+                }
+
+                /*
+                 * Loading gagal.
+                 */
+                if (status != 0) {
+
+                    Log.e(
+                            TAG,
+                            "Failed loading sound: " + loadedPath
+                    );
+
+                    mPathLoadedMap.remove(loadedPath);
+
+                    mPathSoundIDMap.remove(loadedPath);
+
+                    mPendingSounds.remove(loadedPath);
+
+                    return;
+                }
+
+                /*
+                 * Tandai audio sudah siap.
+                 */
+                mPathLoadedMap.put(
+                        loadedPath,
+                        Boolean.TRUE
+                );
+
+                /*
+                 * Ambil semua permintaan pemutaran
+                 * yang menunggu audio ini.
+                 */
+                ArrayList<Boolean> pending =
+                        mPendingSounds.remove(loadedPath);
+
+                if (pending == null || pending.isEmpty()) {
+                    return;
+                }
+
+                Integer soundID =
+                        mPathSoundIDMap.get(loadedPath);
+
+                if (soundID == null) {
+                    return;
+                }
+
+                /*
+                 * Putar seluruh permintaan secara berurutan.
+                 */
+                for (Boolean loop : pending) {
+
+                    if (mReleased ||
+                            mSoundPool != soundPool) {
+
+                        break;
+                    }
+
+                    doPlayEffect(
+                            loadedPath,
+                            soundID.intValue(),
+                            loop != null && loop.booleanValue()
+                    );
+                }
+            }
+        }
+    }
+
+    // ===========================================================
+    // Create Sound ID
+    // ===========================================================
+
+    public int createSoundIDFromAsset(final String pPath) {
+
+        if (pPath == null || pPath.length() == 0) {
+            return INVALID_SOUND_ID;
+        }
+
+        synchronized (mLock) {
+
+            if (mReleased || mSoundPool == null) {
+                return INVALID_SOUND_ID;
+            }
+
+            return createSoundIDFromAssetInternal(pPath);
+        }
+    }
+
+    private int createSoundIDFromAssetInternal(
+            final String pPath) {
+
+        int soundID = INVALID_SOUND_ID;
+
+        try {
+
+            if (pPath.startsWith("/")) {
+
+                soundID = mSoundPool.load(pPath, 0);
+
+            } else {
+
+                soundID = mSoundPool.load(
+                        mContext.getAssets().openFd(pPath),
+                        0
+                );
+            }
+
+        } catch (final Exception e) {
+
+            Log.e(
+                    TAG,
+                    "Failed loading sound: " + pPath,
+                    e
+            );
+
+            soundID = INVALID_SOUND_ID;
+        }
+
+        if (soundID == 0) {
+            soundID = INVALID_SOUND_ID;
+        }
+
+        return soundID;
+    }
+
+    // ===========================================================
+    // Unload Effect
+    // ===========================================================
+
+    public void unloadEffect(final String pPath) {
+
+        if (pPath == null) {
+            return;
+        }
+
+        synchronized (mLock) {
+
+            if (mReleased || mSoundPool == null) {
+                return;
+            }
+
+            ArrayList<Integer> streamIDs =
+                    mPathStreamIDsMap.remove(pPath);
+
+            if (streamIDs != null) {
+
+                for (Integer streamID : streamIDs) {
+
+                    if (streamID != null) {
+
+                        mSoundPool.stop(
+                                streamID.intValue()
+                        );
+                    }
+                }
+            }
+
+            /*
+             * Batalkan antrean hanya untuk audio ini.
+             */
+            mPendingSounds.remove(pPath);
+
+            mPathLoadedMap.remove(pPath);
+
+            Integer soundID =
+                    mPathSoundIDMap.remove(pPath);
+
+            if (soundID != null) {
+
+                mSoundPool.unload(
+                        soundID.intValue()
+                );
+            }
+        }
+    }
+
+    // ===========================================================
+    // Stop Effect
+    // ===========================================================
+
+    public void stopEffect(final int pStreamID) {
+
+        if (pStreamID == INVALID_STREAM_ID) {
+            return;
+        }
+
+        synchronized (mLock) {
+
+            if (mReleased || mSoundPool == null) {
+                return;
+            }
+
+            mSoundPool.stop(pStreamID);
+
+            Iterator<Entry<String, ArrayList<Integer>>> iter =
+                    mPathStreamIDsMap.entrySet().iterator();
+
+            while (iter.hasNext()) {
+
+                Entry<String, ArrayList<Integer>> entry =
+                        iter.next();
+
+                ArrayList<Integer> streams = entry.getValue();
+
+                streams.remove(Integer.valueOf(pStreamID));
+
+                if (streams.isEmpty()) {
+                    iter.remove();
+                }
+            }
+        }
+    }
+
+    // ===========================================================
+    // Pause / Resume
+    // ===========================================================
+
+    public void pauseEffect(final int pStreamID) {
+
+        synchronized (mLock) {
+
+            if (!mReleased && mSoundPool != null &&
+                    pStreamID != INVALID_STREAM_ID) {
+
+                mSoundPool.pause(pStreamID);
+            }
+        }
+    }
+
+    public void resumeEffect(final int pStreamID) {
+
+        synchronized (mLock) {
+
+            if (!mReleased && mSoundPool != null &&
+                    pStreamID != INVALID_STREAM_ID) {
+
+                mSoundPool.resume(pStreamID);
+            }
+        }
+    }
+
+    public void pauseAllEffects() {
+
+        synchronized (mLock) {
+
+            if (!mReleased && mSoundPool != null) {
+
+                mSoundPool.autoPause();
+            }
+        }
+    }
+
+    public void resumeAllEffects() {
+
+        synchronized (mLock) {
+
+            if (mReleased || mSoundPool == null) {
+                return;
+            }
+
+            for (ArrayList<Integer> streams :
+                    mPathStreamIDsMap.values()) {
+
+                for (Integer streamID : streams) {
+
+                    if (streamID != null) {
+
+                        mSoundPool.resume(
+                                streamID.intValue()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // ===========================================================
+    // Stop All Effects
+    // ===========================================================
+
+    public void stopAllEffects() {
+
+        synchronized (mLock) {
+
+            if (mReleased || mSoundPool == null) {
+                return;
+            }
+
+            for (ArrayList<Integer> streams :
+                    mPathStreamIDsMap.values()) {
+
+                for (Integer streamID : streams) {
+
+                    if (streamID != null) {
+
+                        mSoundPool.stop(
+                                streamID.intValue()
+                        );
+                    }
+                }
+            }
+
+            mPathStreamIDsMap.clear();
+
+            /*
+             * Batalkan permintaan yang belum sempat diputar.
+             * Cache audio tetap dipertahankan.
+             */
+            mPendingSounds.clear();
+        }
+    }
+
+    // ===========================================================
+    // Volume
+    // ===========================================================
+
+    public float getEffectsVolume() {
+
+        synchronized (mLock) {
+
+            return (mLeftVolume + mRightVolume) / 2.0f;
+        }
+    }
+
+    public void setEffectsVolume(float pVolume) {
+
+        if (pVolume < 0.0f) {
+            pVolume = 0.0f;
+        }
+
+        if (pVolume > 1.0f) {
+            pVolume = 1.0f;
+        }
+
+        synchronized (mLock) {
+
+            mLeftVolume = pVolume;
+            mRightVolume = pVolume;
+
+            if (mReleased || mSoundPool == null) {
+                return;
+            }
+
+            for (ArrayList<Integer> streams :
+                    mPathStreamIDsMap.values()) {
+
+                for (Integer streamID : streams) {
+
+                    if (streamID != null) {
+
+                        mSoundPool.setVolume(
+                                streamID.intValue(),
+                                mLeftVolume,
+                                mRightVolume
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // ===========================================================
+    // End / Reset
+    // ===========================================================
+
+    public void end() {
+
+        synchronized (mLock) {
+
+            SoundPool oldPool = mSoundPool;
+
+            if (oldPool != null) {
+
+                oldPool.setOnLoadCompleteListener(null);
+
+                oldPool.release();
+            }
+
+            mReleased = true;
+
+            mSoundPool = null;
+
+            mPathStreamIDsMap.clear();
+
+            mPathSoundIDMap.clear();
+
+            mPathLoadedMap.clear();
+
+            mPendingSounds.clear();
+
+            mLeftVolume = 0.5f;
+            mRightVolume = 0.5f;
+
+            /*
+             * Buat SoundPool baru agar objek dapat digunakan lagi.
+             */
+            initData(simultaneousStreams);
+        }
+    }
 }

@@ -2219,6 +2219,7 @@ void CharacterBase::setBuff(int buffValue)
 
 		if (getName() == HeroEnum::Shino ||
 			getName() == HeroEnum::Sai ||
+			getName() == HeroEnum::Sakura ||
 			getName() == HeroEnum::Deidara)
 		{
 			if (_skillChangeBuffValue == 17)

@@ -171,7 +171,7 @@
 				<key>sourceSize</key>
 				<string>{177,186}</string>
 			</dict>
-			<key>hcmode_title.png</key>
+			<key>training_title.png</key>
 			<dict>
 				<key>frame</key>
 				<string>{{1000,516},{66,19}}</string>
@@ -183,6 +183,32 @@
 				<string>{{0,0},{66,19}}</string>
 				<key>sourceSize</key>
 				<string>{66,19}</string>
+			</dict>
+			<key>hardcore_title.png</key>
+			<dict>
+				<key>frame</key>
+				<string>{{893,556},{108,17}}</string>
+				<key>offset</key>
+				<string>{0,0}</string>
+				<key>rotated</key>
+				<false/>
+				<key>sourceColorRect</key>
+				<string>{{0,0},{108,17}}</string>
+				<key>sourceSize</key>
+				<string>{108,17}</string>
+			</dict>
+			<key>hardcore_text.png</key>
+			<dict>
+				<key>frame</key>
+				<string>{{834,525},{165,30}}</string>
+				<key>offset</key>
+				<string>{0,0}</string>
+				<key>rotated</key>
+				<false/>
+				<key>sourceColorRect</key>
+				<string>{{0,0},{165,30}}</string>
+				<key>sourceSize</key>
+				<string>{165,30}</string>
 			</dict>
 			<key>input_bg.png</key>
 			<dict>

@@ -17,6 +17,9 @@ namespace Command
 	mk_const(reTransport);
 	mk_const(setDead);
 	mk_const(findTarget);
+	mk_const(findTargetWide); // REBALANCE (Kabuto skill03): findTarget varian jangkauan lebih
+	                          // luas -- terpisah dari findTarget generik supaya hero lain yang
+	                          // masih pakai findTarget standar (searchRange 0) tidak ikut berubah.
 	mk_const(setRevive);
 	mk_const(setTrade);
 	mk_const(addExtern);
@@ -144,6 +147,28 @@ private:
 					   thiz->_markPoint = Vec2(thiz->_mainTarget->_isFlipped ? thiz->_mainTarget->getPositionX() + 32 : thiz->_mainTarget->getPositionX() - 32,
 											   thiz->_mainTarget->_originY ? thiz->_mainTarget->_originY : thiz->_mainTarget->getPositionY());
 				   }
+			   }
+		   });
+		on(Command::findTargetWide, [](CharacterBase *thiz)
+		   {
+			   // REBALANCE (Kabuto skill03 "Dead Soul Vault" teleport-strike): sama persis
+			   // logikanya dengan Command::findTarget di atas, cuma searchRange dinaikkan dari
+			   // 0 -> 150 supaya area deteksi lawan skill03 lebih luas (target lock-on radius
+			   // untuk setTransport). Dibuat command terpisah, bukan ubah findTarget generik,
+			   // supaya hero lain yang masih pakai findTarget standar tidak ikut berubah.
+			   static const int kSkill3FindTargetRange = 150;
+
+			   if (thiz->notFindHero(kSkill3FindTargetRange))
+			   {
+				   if (thiz->notFindFlog(kSkill3FindTargetRange) ||
+					   thiz->getName() == HeroEnum::RikudoNaruto || thiz->getName() == HeroEnum::SageNaruto)
+					   thiz->_mainTarget = nullptr;
+			   }
+
+			   if (thiz->_mainTarget)
+			   {
+				   thiz->_markPoint = Vec2(thiz->_mainTarget->_isFlipped ? thiz->_mainTarget->getPositionX() + 32 : thiz->_mainTarget->getPositionX() - 32,
+										   thiz->_mainTarget->_originY ? thiz->_mainTarget->_originY : thiz->_mainTarget->getPositionY());
 			   }
 		   });
 		on(Command::pauseJump, [](CharacterBase *thiz)

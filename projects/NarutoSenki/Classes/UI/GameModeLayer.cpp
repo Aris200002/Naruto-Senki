@@ -1,6 +1,10 @@
 #include "StartMenu.h"
 #include "UI/GameModeLayer.h"
 #include "UI/ModeMenuButton.hpp"
+#include "Constants/UiFlowKeys.hpp"
+
+// Flag dari StartMenu.cpp (tombol Yes di kotak HardCore)
+extern bool enableCustomSelect;
 
 extern const GameData kDefaultGameData;
 
@@ -181,22 +185,29 @@ void GameModeLayer::selectMode(GameMode mode)
 		CCLOG("Selected %s mode", data.title.c_str());
 
 		s_GameMode = mode;
-		bool enableCustomSelect = false;
+		bool customSelect = false;
 		if (Cheats < kMaxCheats && (mode == GameMode::FourVsFour || mode == GameMode::HardCore_4Vs4))
 		{
-			enableCustomSelect = false;
+			customSelect = false;
 		}
 		else if (mode != GameMode::RandomDeathmatch && mode != GameMode::Clone)
 		{
-			enableCustomSelect = Cheats >= kMaxCheats;
+			customSelect = Cheats >= kMaxCheats;
 		}
+
+		// Dari tombol Yes di kotak HardCore (StartMenu): aktifkan pilih tim
+		if (enableCustomSelect && mode != GameMode::RandomDeathmatch && mode != GameMode::Clone)
+		{
+			customSelect = true;
+		}
+		enableCustomSelect = false; // sekali pakai
 
 		// call lua global function StartMenu.enterSelectLayer
 		auto pStack = get_luastack;
 		auto state = pStack->getLuaState();
-		lua_getglobal(state, "enterSelectLayer");
+		lua_getglobal(state, UiFlowKeys::kEnterSelectLayer);
 		pStack->pushInt(mode);
-		pStack->pushBoolean(enableCustomSelect);
+		pStack->pushBoolean(customSelect);
 		pStack->executeFunction(2);
 
 		auto handler = getGameModeHandler();

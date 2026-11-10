@@ -31,7 +31,11 @@ public:
 		setPlayerTeamByGroup(playerGroup);
 
 		auto playerHero = getSelectedOrRandomHero();
-		auto enemyHero = getRandomHeroExcept(playerHero);
+		// Musuh pilihan dari layar pilih; kalau kosong, diacak
+		string customEnemy = takeCustomEnemy(0);
+		const char *enemyHero = (!customEnemy.empty() && customEnemy != playerHero)
+									? customEnemy.c_str()
+									: getRandomHeroExcept(playerHero);
 
 		addHero(playerHero, Role::Player, playerGroup);
 		if (Cheats >= kMaxCheats)

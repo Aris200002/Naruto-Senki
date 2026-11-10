@@ -218,6 +218,11 @@ protected:
 		if (com3Select)
 			selectLayer->_com3Select = com3Select;
 
+		// Pilihan musuh dari layar pilih (SelectLayer.lua menyimpannya di UserDefault)
+		string customEnemy[4];
+		for (int j = 0; j < 4; j++)
+			customEnemy[j] = takeCustomEnemy(j);
+
 		// init player hero
 		string tmpChar;
 		if (selectLayer->_playerSelect)
@@ -258,6 +263,12 @@ protected:
 				continue;
 			if (selectLayer->_com3Select && is_same(selectLayer->_com3Select, kHeroList[i]))
 				continue;
+			bool isCustomEnemy = false;
+			for (int j = 0; j < 4; j++)
+				if (!customEnemy[j].empty() && customEnemy[j] == kHeroList[i])
+					isCustomEnemy = true;
+			if (isCustomEnemy)
+				continue;
 
 			realHeroVector.push_back(kHeroList[i]);
 		}
@@ -296,16 +307,25 @@ protected:
 			}
 			else
 			{
-				int count = realHeroVector.size();
-				setRand();
-				int index = random(count);
-				if (index == count)
-					index = realHeroVector.size() - 1;
+				int enemyIndex = i - comOfPlayerGroupCount;
+				if (enemyIndex >= 0 && enemyIndex < 4 && !customEnemy[enemyIndex].empty())
+				{
+					// musuh pilihan dari layar pilih
+					hero = customEnemy[enemyIndex];
+				}
+				else
+				{
+					int count = realHeroVector.size();
+					setRand();
+					int index = random(count);
+					if (index == count)
+						index = realHeroVector.size() - 1;
 
-				hero = realHeroVector.at(index);
+					hero = realHeroVector.at(index);
+					realHeroVector.erase(std::find(realHeroVector.begin(), realHeroVector.end(), hero));
+				}
 				heroDataVector.push_back({hero, Role::Com, team > 0 ? Group::Konoha : Group::Akatsuki});
 				heroVector.push_back(hero);
-				realHeroVector.erase(std::find(realHeroVector.begin(), realHeroVector.end(), hero));
 			}
 		}
 	}
@@ -375,6 +395,20 @@ protected:
 	{
 		setRand();
 		return random(2) == 0 ? Group::Konoha : Group::Akatsuki;
+	}
+
+	// Ambil (lalu hapus) pilihan musuh ke-index (0..3) dari layar pilih.
+	// Kosong berarti musuh diacak.
+	static inline string takeCustomEnemy(int index)
+	{
+		static const char *kKeys[4] = {"customEnemy1", "customEnemy2", "customEnemy3", "customEnemy4"};
+		if (index < 0 || index > 3)
+			return "";
+		auto ud = UserDefault::sharedUserDefault();
+		string value = ud->getStringForKey(kKeys[index]);
+		if (!value.empty())
+			ud->setStringForKey(kKeys[index], "");
+		return value;
 	}
 
 	static inline void getRandomGroups(Group &groupA, Group &groupB)

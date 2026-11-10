@@ -7,7 +7,6 @@ function SelectLayer:init()
     self.mode = _G.mode
     self.enableCustomSelect = _G.enableCustomSelect
     if self.mode == GameMode.Clone or self.mode == GameMode.OneVsOne then
-        self.enableCustomSelect = false
         self.is3v3Mode = false
         self.is4v4Mode = false
     else
@@ -16,6 +15,35 @@ function SelectLayer:init()
         self.is4v4Mode = self.mode == GameMode.FourVsFour or self.mode ==
                              GameMode.HardCore_4Vs4
     end
+
+    -- Jumlah slot rekan tim (COM) yang bisa dipilih
+    self.comCount = self.is4v4Mode and 3 or (self.is3v3Mode and 2 or 0)
+
+    -- Jumlah slot musuh yang bisa dipilih (sesuai jumlah musuh tiap mode)
+    if self.mode == GameMode.OneVsOne or self.mode == GameMode.Clone or
+        self.mode == GameMode.Boss then
+        self.enemyCount = 1
+    elseif self.is4v4Mode then
+        self.enemyCount = 4
+    elseif self.mode == GameMode.Classic or self.mode == GameMode.Deathmatch then
+        self.enemyCount = 3
+    else
+        self.enemyCount = 0
+    end
+
+    -- RandomDeathmatch: semua hero diacak, tidak ada pilihan
+    if self.mode == GameMode.RandomDeathmatch then
+        self.enableCustomSelect = false
+    end
+    if self.comCount == 0 and self.enemyCount == 0 then
+        self.enableCustomSelect = false
+    end
+
+    self._enemySelectors = {}
+    self._enemySelects = {}
+    -- Bersihkan pilihan musuh dari sesi sebelumnya (dibaca oleh C++)
+    for i = 1, 4 do save.string('customEnemy' .. i, '') end
+
     self.enableHardCore = false
 
     self.pageNum = 3
@@ -218,6 +246,7 @@ function SelectLayer:init()
         if self.is3v3Mode or self.is4v4Mode then
             self:initCustomSelectMode()
         end
+        if self.enemyCount > 0 then self:initEnemySelectMode() end
     end
 
     local ranking_btn = ui.newImageMenuItem({
@@ -405,6 +434,8 @@ function SelectLayer:setSelected(btn)
             else
                 if self._comLabel1 then
                     self._comLabel1:runAction(seq)
+                else
+                    self:afterComPicked()
                 end
             end
         end
@@ -420,7 +451,7 @@ function SelectLayer:setSelected(btn)
         self._heroName = display.newSprite(charName .. '_font.png', 100, 20)
         self._heroName:setAnchorPoint(CCPoint(0.5, 0))
         self:addChild(self._heroName, 5)
-    elseif not self._com1Select then
+    elseif self.comCount >= 1 and not self._com1Select then
         self._comSelector1:setDisplayFrame(
             display.newSpriteFrame(self.selectHero .. '_small.png'))
 
@@ -432,8 +463,9 @@ function SelectLayer:setSelected(btn)
             self._comLabel1:setOpacity(255)
             self._comLabel1:setDisplayFrame(
                 display.newSpriteFrame('com_label2.png'))
+            if self.comCount == 1 then self:afterComPicked() end
         end
-    elseif not self._com2Select then
+    elseif self.comCount >= 2 and not self._com2Select then
         self._comSelector2:setDisplayFrame(
             display.newSpriteFrame(self.selectHero .. '_small.png'))
 
@@ -445,8 +477,9 @@ function SelectLayer:setSelected(btn)
             self._comLabel2:setOpacity(255)
             self._comLabel2:setDisplayFrame(
                 display.newSpriteFrame('com_label2.png'))
+            if self.comCount == 2 then self:afterComPicked() end
         end
-    elseif not self._com3Select then
+    elseif self.comCount >= 3 and not self._com3Select then
         self._comSelector3:setDisplayFrame(
             display.newSpriteFrame(self.selectHero .. '_small.png'))
 
@@ -458,21 +491,104 @@ function SelectLayer:setSelected(btn)
             self._comLabel3:setOpacity(255)
             self._comLabel3:setDisplayFrame(
                 display.newSpriteFrame('com_label2.png'))
+            self:afterComPicked()
+        end
+    else
+        self:onPickEnemy(btn)
+    end
+end
 
+-- Dipanggil setelah semua slot rekan tim terisi
+function SelectLayer:afterComPicked()
+    if self.enemyCount > 0 then
+        self:startEnemyBlink(1)
+    elseif self._selectImg then
+        self._selectImg:removeFromParent()
+        self._selectImg = nil
+    end
+end
+
+function SelectLayer:startEnemyBlink(index)
+    local selector = self._enemySelectors[index]
+    if not selector then return end
+    local fd = CCFadeOut:create(1.0)
+    selector:runAction(CCRepeatForever:create(
+                           transition.sequence({fd, fd:reverse()})))
+end
+
+-- Pemilihan musuh: klik dua kali pada karakter untuk mengunci
+function SelectLayer:onPickEnemy(btn)
+    local idx
+    for i = 1, self.enemyCount do
+        if not self._enemySelects[i] then
+            idx = i
+            break
+        end
+    end
+    if not idx then return end
+
+    local selector = self._enemySelectors[idx]
+    selector:setDisplayFrame(
+        display.newSpriteFrame(self.selectHero .. '_small.png'))
+
+    if btn._clickTime >= 2 then
+        self._enemySelects[idx] = self.selectHero
+        -- dibaca oleh C++ (IGameModeHandler) saat game dimulai
+        save.string('customEnemy' .. idx, self.selectHero)
+
+        selector:stopAllActions()
+        selector:setOpacity(255)
+
+        if idx < self.enemyCount then
+            self:startEnemyBlink(idx + 1)
+        elseif self._selectImg then
             self._selectImg:removeFromParent()
             self._selectImg = nil
         end
     end
 end
 
-function SelectLayer:noComSelect()
-    if self.is4v4Mode then
-        return self._com3Select
-    elseif self.is3v3Mode then
-        return self._com2Select
-    else
-        return self._playerSelect
+function SelectLayer:initEnemySelectMode()
+    log('Initial Enemy Select Mode...')
+    local enemyLayer = display.newLayer()
+
+    local sample = display.newSprite('#unknow_select.png')
+    local w = sample:getContentSize().width
+    local h = sample:getContentSize().height
+
+    -- Baris musuh di bawah slot rekan tim; kalau tidak ada rekan tim,
+    -- pakai posisi baris yang sama
+    local rowY = 194
+    if self.comCount > 0 then rowY = rowY - h - 14 end
+
+    local enemyBg = display.newSprite('#team_bg.png', 0, rowY - 9)
+    enemyBg:setAnchorPoint(0, 0)
+    enemyLayer:addChild(enemyBg)
+
+    for i = 1, self.enemyCount do
+        local selector = display.newSprite('#unknow_select.png')
+        selector:setAnchorPoint(0, 0)
+        selector:setPosition(2 + (i - 1) * (w + 8), rowY)
+        -- tanda merah supaya beda dengan slot rekan tim
+        pcall(function() selector:setColor(ccc3(255, 130, 130)) end)
+        enemyLayer:addChild(selector)
+        self._enemySelectors[i] = selector
     end
+
+    self:addChild(enemyLayer, 50)
+end
+
+-- True kalau semua pilihan sudah terisi (tombol karakter dikunci)
+function SelectLayer:noComSelect()
+    if not self.enableCustomSelect then return self._playerSelect end
+    if not self._playerSelect then return false end
+    if self.comCount >= 1 and not self._com1Select then return false end
+    if self.comCount >= 2 and not self._com2Select then return false end
+    if self.comCount >= 3 and not self._com3Select then return false end
+    for i = 1, self.enemyCount do
+        if not self._enemySelects[i] then return false end
+    end
+    return true
 end
 
 function backToStartMenu()

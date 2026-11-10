@@ -196,7 +196,7 @@ void GameModeLayer::selectMode(GameMode mode)
 		}
 
 		// Dari tombol Yes di kotak HardCore (StartMenu): aktifkan pilih tim
-		if (enableCustomSelect && mode != GameMode::RandomDeathmatch && mode != GameMode::Clone)
+		if (enableCustomSelect && mode != GameMode::RandomDeathmatch)
 		{
 			customSelect = true;
 		}

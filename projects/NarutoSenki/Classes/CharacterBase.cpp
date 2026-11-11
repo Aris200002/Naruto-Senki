@@ -2946,7 +2946,7 @@ void CharacterBase::setClone(int cloneTime)
 	getGameLayer()->addChild(clone, -clone->getPositionY());
 	clone->doAI();
 
-	if (cloneTime > 0)
+	if (cloneTime > 0 && getName() != HeroEnum::Kankuro)
 	{
 		clone->scheduleOnce(schedule_selector(Hero::removeClone), cloneTime);
 	}

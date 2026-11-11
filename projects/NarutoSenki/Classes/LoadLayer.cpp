@@ -211,7 +211,7 @@ void LoadLayer::perloadCharIMG(const string &name)
 
 void LoadLayer::unloadCharIMG(CharacterBase *c)
 {
-	if (c == nullptr || c->isClone() || c->isSummon())
+	if (c == nullptr || c->isClone() || c->isSummon() || c->isKugutsu() || c->isGuardian())
 	{
 		return;
 	}

@@ -8,25 +8,39 @@ class IGameModeHandler;
 
 enum GameMode : uint32_t
 {
+	// 1 VS 1 // TODO: As a test mode
 	OneVsOne,
+	// 3 VS 3
 	Classic,
+	// 4 VS 4
 	FourVsFour,
+	// 4 VS 4 (Disabled gears)
 	HardCore_4Vs4,
+	// 3 VS 1
 	Boss,
+	// 3 VS 3
 	Clone,
+	// TODO：3 VS 3
 	Deathmatch,
+	// 3 VS 3
 	RandomDeathmatch,
+
 	__Internal_Max_Length
-};
+}; // namespace GameMode
 
 struct GameModeData
 {
 public:
 	string title;
 	string description;
+
 	bool isLocked;
 	bool useMask2;
+
 	bool hasSelected;
+	// IGameModeHandler *handler;
+
+	// static const GameModeData &from(const char *path);
 };
 
 struct GameData
@@ -34,7 +48,9 @@ struct GameData
 	bool enableGear = true;
 	bool isHardCore = true;
 	bool isRandomChar = false;
+
 	bool use4v4SpawnLayout = false;
+
 	Group playerGroup;
 };
 
@@ -46,20 +62,25 @@ class IGameModeHandler
 
 private:
 	vector<HeroData> heroDataVector;
+	// map
 	int mapId = 0;
+	// tower
 	bool enableKonohaTowers = true;
 	bool enableAkatsukiTowers = true;
+	// flog
 	bool skipInitFlogs = false;
 	bool enableKonohaFlogs = false;
 	bool enableAkatsukiFlogs = false;
 	float flogSpawnDuration = 15.0f;
 	bool isLimitFlog = false;
 	int maxFlogWaves;
+	// hero
 	bool enableHeroReborn = true;
 
 	void Internal_GameOver()
 	{
 		onGameOver();
+
 		gd = {};
 		clearHeroArray();
 		resetCheats();
@@ -67,9 +88,11 @@ private:
 
 protected:
 	SelectLayer *selectLayer = nullptr;
+	// game
 	GameData gd;
 	int oldCheats = -1;
 	vector<string> heroVector;
+	// player
 	Group playerGroup;
 
 public:
@@ -78,9 +101,12 @@ public:
 	const Group kDefaultGroup = Group::Konoha;
 
 	virtual void init() = 0;
+
 	virtual void onInitHeros() = 0;
 	virtual void onGameStart() = 0;
 	virtual void onGameOver() = 0;
+
+	// callbacks
 	virtual void onCharacterInit(CharacterBase *c) = 0;
 	virtual void onCharacterDead(CharacterBase *c) = 0;
 	virtual void onCharacterReborn(CharacterBase *c) = 0;
@@ -99,13 +125,22 @@ public:
 	inline const vector<HeroData> &getHerosArray() { return heroDataVector; }
 
 protected:
+	// IGameModeHandler()
+	// {
+	// 	oldCheats = Cheats;
+	// }
+
 	void clearHeroArray()
 	{
 		heroDataVector.clear();
 		heroVector.clear();
 	}
 
-	void setMap(int id) { this->mapId = id; }
+	// Warpper of game layer
+	void setMap(int id)
+	{
+		this->mapId = id;
+	}
 
 	void setTower(bool enableKonohaTowers, bool enableAkatsukiTowers)
 	{
@@ -122,8 +157,12 @@ protected:
 		this->maxFlogWaves = maxWaves;
 	}
 
-	void setHero(bool enableReborn) { this->enableHeroReborn = enableReborn; }
+	void setHero(bool enableReborn)
+	{
+		this->enableHeroReborn = enableReborn;
+	}
 
+	// init hero
 	inline void addHero(const char *name, Role role, Group group, uint32_t lv = 1)
 	{
 		heroDataVector.push_back({name, role, group});
@@ -138,12 +177,12 @@ protected:
 
 	inline void addKonohaHero(const vector<string> &heros, const char *name, Role role, uint32_t lv = 1)
 	{
-		addHero(name, Role::Com, Group::Konoha, lv);
+		addHero(name, role, Group::Konoha, lv);
 	}
 
 	inline void addAkatsukiHero(const vector<string> &heros, const char *name, Role role, uint32_t lv = 1)
 	{
-		addHero(name, Role::Com, Group::Akatsuki, lv);
+		addHero(name, role, Group::Akatsuki, lv);
 	}
 
 	inline void initHeros(uint32_t playerCount, uint32_t enemyCount)
@@ -156,10 +195,13 @@ protected:
 				   const char *com1Select = nullptr, const char *com2Select = nullptr, const char *com3Select = nullptr)
 	{
 		clearHeroArray();
+
 		playerCount = playerCount > kMaxCharCount ? kMaxCharCount : playerCount;
 		enemyCount = enemyCount > kMaxCharCount ? kMaxCharCount : enemyCount;
 		setRand();
 		int team = random(2);
+		// TODO: Support custom player group
+		// playerGroup = playerGroup == nullptr ? (team > 0 ? Group::Konoha : Group::Akatsuki) : playerGroup;
 		playerGroup = team > 0 ? Group::Akatsuki : Group::Konoha;
 		this->gd.playerGroup = playerGroup;
 		this->playerGroup = playerGroup;
@@ -176,10 +218,12 @@ protected:
 		if (com3Select)
 			selectLayer->_com3Select = com3Select;
 
+		// Pilihan musuh dari layar pilih (SelectLayer.lua menyimpannya di UserDefault)
 		string customEnemy[4];
 		for (int j = 0; j < 4; j++)
 			customEnemy[j] = takeCustomEnemy(j);
 
+		// init player hero
 		string tmpChar;
 		if (selectLayer->_playerSelect)
 		{
@@ -198,13 +242,16 @@ protected:
 				index = random(count);
 				tmpChar = ((CCString *)selcetList->objectAtIndex(index))->m_sString;
 			} while (tmpChar == "None");
+
 			selectLayer->_playerSelect = tmpChar.c_str();
 			gd.isRandomChar = true;
 		}
 
+		// push player
 		heroDataVector.push_back({tmpChar, Role::Player, playerGroup});
 		heroVector.push_back(tmpChar);
 
+		// init com heros
 		vector<string> realHeroVector;
 		for (size_t i = 0; i < kHeroNum; i++)
 		{
@@ -222,6 +269,7 @@ protected:
 					isCustomEnemy = true;
 			if (isCustomEnemy)
 				continue;
+
 			realHeroVector.push_back(kHeroList[i]);
 		}
 
@@ -231,11 +279,17 @@ protected:
 			if (i < comOfPlayerGroupCount)
 			{
 				if (i == 0 && selectLayer->_com1Select)
+				{
 					hero = selectLayer->_com1Select;
+				}
 				else if (i == 1 && selectLayer->_com2Select)
+				{
 					hero = selectLayer->_com2Select;
+				}
 				else if (i == 2 && selectLayer->_com3Select)
+				{
 					hero = selectLayer->_com3Select;
+				}
 				else
 				{
 					int count = realHeroVector.size();
@@ -243,9 +297,11 @@ protected:
 					int index = random(count);
 					if (index == count)
 						index = realHeroVector.size() - 1;
+
 					hero = realHeroVector.at(index);
 					realHeroVector.erase(std::find(realHeroVector.begin(), realHeroVector.end(), hero));
 				}
+
 				heroDataVector.push_back({hero, Role::Com, team > 0 ? Group::Akatsuki : Group::Konoha});
 				heroVector.push_back(hero);
 			}
@@ -253,7 +309,10 @@ protected:
 			{
 				int enemyIndex = i - comOfPlayerGroupCount;
 				if (enemyIndex >= 0 && enemyIndex < 4 && !customEnemy[enemyIndex].empty())
+				{
+					// musuh pilihan dari layar pilih
 					hero = customEnemy[enemyIndex];
+				}
 				else
 				{
 					int count = realHeroVector.size();
@@ -261,6 +320,7 @@ protected:
 					int index = random(count);
 					if (index == count)
 						index = realHeroVector.size() - 1;
+
 					hero = realHeroVector.at(index);
 					realHeroVector.erase(std::find(realHeroVector.begin(), realHeroVector.end(), hero));
 				}
@@ -270,7 +330,14 @@ protected:
 		}
 	}
 
-	inline void setPlayerTeamByGroup(Group group) { gd.playerGroup = group; }
+	inline void setPlayerTeamByGroup(Group group)
+	{
+		gd.playerGroup = group;
+	}
+
+	/**
+	 * Static Utils
+	 */
 
 	static inline const char *getRandomHero()
 	{
@@ -288,45 +355,30 @@ protected:
 				i = random(kHeroNum);
 			return kHeroList[i];
 		}
-		return kHeroList[random(kHeroNum)];
+		else
+		{
+			return kHeroList[random(kHeroNum)];
+		}
 	}
 
 	static inline const char *getRandomHeroExceptAll(const vector<string> &excepts, const char *defaultChar = "Naruto")
 	{
-		auto _begin = excepts.begin();
-		auto _end = excepts.end();
-		int idx;
-		for (size_t i = 0; i < kHeroNum * 2; i++)
-		{
-			setRand();
-			idx = random(kHeroNum);
-			if (std::find(_begin, _end, kHeroList[idx]) == _end)
-				return kHeroList[idx];
-		}
-		return defaultChar;
-	}
-
-	// Used by Random Deathmatch: returns nullptr only if all heroes are occupied.
-	static inline const char *getRandomHeroExceptAllOrNull(const vector<string> &excepts)
-	{
-		vector<const char *> availableHeroes;
-		availableHeroes.reserve(kHeroNum);
-
+		// Kumpulkan dulu hero yang masih boleh dipakai, lalu acak SEKALI.
+		// Catatan: setRand() = srand(time(0)). Kalau dipanggil di dalam loop, seed-nya sama
+		// terus dalam 1 detik, sehingga hasilnya selalu sama dan akhirnya jatuh ke defaultChar (Naruto).
+		vector<const char *> candidates;
+		candidates.reserve(kHeroNum);
 		for (size_t i = 0; i < kHeroNum; i++)
 		{
 			if (std::find(excepts.begin(), excepts.end(), kHeroList[i]) == excepts.end())
-				availableHeroes.push_back(kHeroList[i]);
+				candidates.push_back(kHeroList[i]);
 		}
 
-		if (availableHeroes.empty())
-			return nullptr;
+		if (candidates.empty())
+			return defaultChar;
 
-		setRand();
-		size_t index = (size_t)random((int)availableHeroes.size());
-		if (index >= availableHeroes.size())
-			index = availableHeroes.size() - 1;
-
-		return availableHeroes[index];
+		size_t count = candidates.size();
+		return candidates[rand() % count];
 	}
 
 	inline const char *getSelectedOrRandomHero()
@@ -350,6 +402,8 @@ protected:
 		return random(2) == 0 ? Group::Konoha : Group::Akatsuki;
 	}
 
+	// Ambil (lalu hapus) pilihan musuh ke-index (0..3) dari layar pilih.
+	// Kosong berarti musuh diacak.
 	static inline string takeCustomEnemy(int index)
 	{
 		static const char *kKeys[4] = {"customEnemy1", "customEnemy2", "customEnemy3", "customEnemy4"};

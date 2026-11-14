@@ -15,10 +15,6 @@ private:
 	uint8_t konohaLiveCount;
 	uint8_t akatsukiLiveCount;
 
-	// Hero lama dari karakter yang sudah mati tapi belum berganti (indeks = charId - 1).
-	// Tetap dianggap "terpakai" sampai karakter itu benar-benar berganti.
-	string retiredHero[8];
-
 public:
 	void init()
 	{
@@ -29,9 +25,6 @@ public:
 
 		konohaLiveCount = kHeroAmount;
 		akatsukiLiveCount = kHeroAmount;
-
-		for (auto &name : retiredHero)
-			name.clear();
 
 		gd.isHardCore = true;
 	}
@@ -88,10 +81,6 @@ public:
 
 		if (c->changeCharId > -1)
 		{
-			// Karakter ini sudah berganti, hero lamanya boleh dipakai karakter lain yang mati setelahnya
-			if (c->changeCharId < 8)
-				retiredHero[c->changeCharId].clear();
-
 			auto gameLayer = getGameLayer();
 			// initial a new random character
 			auto newCharName = heroVector.at(c->changeCharId);
@@ -107,7 +96,8 @@ public:
 				// If the character has changed, then cleanup
 				CCNotificationCenter::sharedNotificationCenter()->removeAllObservers(c);
 				c->stopAllActions();
-				for (auto mo : c->getMonsterArray())
+				auto monsters = c->getMonsterArray();
+				for (auto mo : monsters)
 				{
 					if (auto heroMo = dynamic_cast<Hero *>(mo))
 					{
@@ -237,25 +227,9 @@ private:
 			CCLOGERROR("Not found hero %s from hero vector", c->getName().c_str());
 			return;
 		}
-		if (index >= 8)
-		{
-			CCLOGERROR("Hero index %d out of range", index);
-			return;
-		}
 		c->changeCharId = index;
 
-		// Hero yang tidak boleh dipilih: semua hero yang sedang/akan dipakai (tim sendiri & musuh),
-		// hero lama karakter lain yang belum berganti, dan hero lama karakter ini sendiri.
-		vector<string> excepts = heroVector;
-		for (const auto &name : retiredHero)
-		{
-			if (!name.empty())
-				excepts.push_back(name);
-		}
-		excepts.push_back(c->getName());
-		retiredHero[index] = c->getName();
-
-		auto newChar = getRandomHeroExceptAll(excepts);
+		auto newChar = getRandomHeroExceptAll(heroVector);
 		heroVector.at(index) = newChar;
 	}
 

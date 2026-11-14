@@ -363,22 +363,17 @@ protected:
 
 	static inline const char *getRandomHeroExceptAll(const vector<string> &excepts, const char *defaultChar = "Naruto")
 	{
-		// Kumpulkan dulu hero yang masih boleh dipakai, lalu acak SEKALI.
-		// Catatan: setRand() = srand(time(0)). Kalau dipanggil di dalam loop, seed-nya sama
-		// terus dalam 1 detik, sehingga hasilnya selalu sama dan akhirnya jatuh ke defaultChar (Naruto).
-		vector<const char *> candidates;
-		candidates.reserve(kHeroNum);
-		for (size_t i = 0; i < kHeroNum; i++)
+		auto _begin = excepts.begin();
+		auto _end = excepts.end();
+		int idx;
+		for (size_t i = 0; i < kHeroNum * 2; i++) // Max loops is kHeroNum * 2
 		{
-			if (std::find(excepts.begin(), excepts.end(), kHeroList[i]) == excepts.end())
-				candidates.push_back(kHeroList[i]);
+			setRand();
+			idx = random(kHeroNum);
+			if (std::find(_begin, _end, kHeroList[idx]) == _end)
+				return kHeroList[idx];
 		}
-
-		if (candidates.empty())
-			return defaultChar;
-
-		size_t count = candidates.size();
-		return candidates[rand() % count];
+		return defaultChar;
 	}
 
 	inline const char *getSelectedOrRandomHero()
